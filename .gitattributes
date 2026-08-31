@@ -1,0 +1,6 @@
+# PowerShell 5.1 reads .ps1 without a BOM as Windows-1252, so a UTF-8 non-ASCII
+# character can be decoded as a curly quote and silently terminate a string.
+# Keep these files ASCII, and keep the BOM.
+*.ps1 text eol=crlf working-tree-encoding=UTF-8
+*.cmd text eol=crlf
+*.bat text eol=crlf

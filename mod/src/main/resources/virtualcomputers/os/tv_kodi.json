@@ -1,0 +1,12 @@
+{
+  "id": "tv_kodi",
+  "name": "TV OS (Debian + Kodi)",
+  "kind": "recipe",
+  "base": "debian_cloud",
+  "arch": ["x86_64", "aarch64"],
+  "firmware": "bios",
+  "disk_gb": 16,
+  "source": {},
+  "provision": "apt-get update\nDEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends kodi xserver-xorg xinit dbus-x11 pulseaudio\nuseradd -m -G video,audio,input,tty kodi || true\nprintf '[Unit]\\nDescription=Kodi\\nAfter=systemd-user-sessions.service network-online.target\\n\\n[Service]\\nUser=kodi\\nGroup=video\\nPAMName=login\\nTTYPath=/dev/tty7\\nType=simple\\nExecStart=/usr/bin/xinit /usr/bin/kodi-standalone -- :0 -nolisten tcp vt7\\nRestart=always\\n\\n[Install]\\nWantedBy=graphical.target\\n' > /etc/systemd/system/kodi.service\nsystemctl set-default graphical.target\nsystemctl enable kodi.service",
+  "notes": "The plan's own worked example of a recipe, and the answer for architectures LibreELEC publishes no image for: a base cloud image plus a script that turns it into a television. It costs nothing to host because there is nothing to host - the base is Debian's own download and this is a few lines of text. Not the same thing as LibreELEC, and it does not pretend to be; it is a machine that watches things, for one script rather than a port. Building it boots the base with a cloud-init seed, runs the script, and the guest powers itself off when it is done - which is how the mod knows a build finished, because nothing else about a script is visible from outside a guest. Then the result is frozen as this entry's template and every television after it clones it in seconds. Reach it with /give @s virtualcomputers:custom_os[virtualcomputers:image_id=\"tv_kodi\"]."
+}

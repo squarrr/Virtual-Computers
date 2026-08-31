@@ -1,0 +1,16 @@
+{
+  "id": "debian_cloud",
+  "name": "Debian 13 cloud image",
+  "kind": "template",
+  "media": "disk",
+  "arch": ["x86_64"],
+  "firmware": "bios",
+  "disk_gb": 16,
+  "source": {
+    "url": "https://cloud.debian.org/images/cloud/trixie/20260831-2587/debian-13-genericcloud-amd64-20260831-2587.qcow2",
+    "checksum": "sha512:8ea9faae810043a0b35b0149f05014f26705c2339ffb11ead308f33e844a87cc3ef46ec81d5262b38817b6a88af404874d48a5857ebe072ef6a31dfb6e371f50",
+    "size": 339214336,
+    "archive": "none"
+  },
+  "notes": "A genuine template, which LibreELEC turned out not to be: this qcow2 is a finished Debian that boots straight to a login prompt with no installer anywhere in it. SHA-512 because that is what Debian publishes for cloud images, and the snapshot is pinned rather than tracking 'latest', which moves weekly and would take the checksum with it. It is a BASE more than a product - a cloud image ships with no password on purpose, because it expects cloud-init to configure it on first boot, so on its own it is a working system nobody can log into. That is exactly the shape a recipe is for, and tv_kodi is one built on this. No OS box points here; reach it with /give @s virtualcomputers:custom_os[virtualcomputers:image_id=\"debian_cloud\"]."
+}

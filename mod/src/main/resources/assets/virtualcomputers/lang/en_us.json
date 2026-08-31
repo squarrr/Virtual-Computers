@@ -1,0 +1,17 @@
+{
+  "block.virtualcomputers.screen": "Screen",
+  "block.virtualcomputers.laptop": "Laptop",
+  "itemGroup.virtualcomputers": "Virtual Computers",
+  "key.categories.virtualcomputers.general": "Virtual Computers",
+  "key.virtualcomputers.release_focus": "Stop using a machine",
+  "screen.virtualcomputers.focused": "Using a machine",
+  "hud.virtualcomputers.release": "%s to leave",
+  "hud.virtualcomputers.unbound": "Esc to leave — bind a key in Controls",
+  "block.virtualcomputers.desktop": "Desktop PC",
+  "item.virtualcomputers.windows_10_os": "Windows 10 OS",
+  "item.virtualcomputers.windows_11_os": "Windows 11 OS",
+  "item.virtualcomputers.linux_os": "Linux OS",
+  "item.virtualcomputers.tv_os": "TV OS",
+  "item.virtualcomputers.chrome_os": "Chrome OS",
+  "item.virtualcomputers.custom_os": "Custom OS"
+}

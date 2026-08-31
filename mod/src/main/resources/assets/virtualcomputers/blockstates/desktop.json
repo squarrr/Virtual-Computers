@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "virtualcomputers:block/desktop" },
+    "facing=east":  { "model": "virtualcomputers:block/desktop", "y": 90 },
+    "facing=south": { "model": "virtualcomputers:block/desktop", "y": 180 },
+    "facing=west":  { "model": "virtualcomputers:block/desktop", "y": 270 }
+  }
+}

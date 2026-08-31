@@ -1,0 +1,12 @@
+{
+  "id": "custom",
+  "name": "Custom OS",
+  "kind": "installer",
+  "media": "iso",
+  "arch": ["x86_64"],
+  "firmware": "bios",
+  "disk_gb": 32,
+  "source": {},
+  "local_hint": "Put any bootable .iso in the images folder and this box will boot the first one it finds. To name a specific image, or to give it UEFI, a different disk size or a provisioning script, drop a small .json in the os folder beside it and bind a box to it with /give @s virtualcomputers:custom_os[virtualcomputers:image_id=\"your_id\"].",
+  "notes": "The escape hatch, and deliberately not a separate feature - it is the third row of the plan's table, which is what makes Windows need no special case either. A custom box with nothing bound to it boots whatever ISO is in the images folder, which is exactly what phase 2 did, so nothing that already worked stopped working. A custom box bound to an entry id is that entry, including a recipe: an entry naming a base image and a provisioning script costs nothing to host and is what rescues architectures the appliance projects publish no image for."
+}

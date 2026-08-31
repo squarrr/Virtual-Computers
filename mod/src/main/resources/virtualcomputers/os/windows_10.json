@@ -1,0 +1,12 @@
+{
+  "id": "windows_10",
+  "name": "Windows 10",
+  "kind": "installer",
+  "media": "iso",
+  "arch": ["x86_64"],
+  "firmware": "bios",
+  "disk_gb": 64,
+  "source": {},
+  "local_hint": "Put a Windows 10 ISO in the images folder. Get one from Microsoft's own download page - the licence to run it stays yours, and this mod neither supplies one nor grants one.",
+  "notes": "A registry entry with no URL, which is the honest shape rather than a gap. Microsoft's download endpoints are undocumented and change often; Rufus and Ventoy do drive them, and the plan's own advice is to treat that as a convenience with a local file as the reliable path. Shipping a URL that breaks silently would be worse than shipping none. Windows 10 needs no TPM and no Secure Boot, which makes it the easier of the two to provision - but it left support in October 2025, so keep it behind the NAT-isolated network default and do not treat it as a machine you would expose. Every running Windows machine wants its own licence; cloning a template does not multiply one."
+}

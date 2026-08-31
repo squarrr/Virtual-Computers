@@ -1,0 +1,39 @@
+{
+  "parent": "block/block",
+  "credit": "Made with Blockbench",
+  "textures": {
+    "0": "virtualcomputers:block/laptop_lid",
+    "1": "virtualcomputers:block/laptop_body",
+    "particle": "virtualcomputers:block/laptop_body"
+  },
+  "elements": [
+    {
+      "name": "base",
+      "from": [3, 0, 1],
+      "to": [13, 1, 9],
+      "rotation": {"angle": 0, "axis": "y", "origin": [6, 0, 1]},
+      "faces": {
+        "north": {"uv": [0.25, 0.25, 0.75, 0.75], "texture": "#1"},
+        "east": {"uv": [1.25, 0.25, 1.75, 0.75], "texture": "#1"},
+        "south": {"uv": [2.25, 0.25, 2.75, 0.75], "texture": "#1"},
+        "west": {"uv": [3.25, 0.25, 3.75, 0.75], "texture": "#1"},
+        "up": {"uv": [4.25, 0.25, 4.75, 0.75], "texture": "#1"},
+        "down": {"uv": [5.25, 0.25, 5.75, 0.75], "texture": "#1"}
+      }
+    },
+    {
+      "name": "lid",
+      "from": [3, 0, 9],
+      "to": [13, 1, 17],
+      "rotation": {"x": -77.5, "y": 0, "z": 0, "origin": [6, 0, 9]},
+      "faces": {
+        "north": {"uv": [0.125, 0.125, 0.375, 0.375], "texture": "#0"},
+        "east": {"uv": [0.625, 0.125, 0.875, 0.375], "texture": "#0"},
+        "south": {"uv": [1.125, 0.125, 1.375, 0.375], "texture": "#0"},
+        "west": {"uv": [1.625, 0.125, 1.875, 0.375], "texture": "#0"},
+        "up": {"uv": [2.125, 0.125, 2.375, 0.375], "texture": "#0"},
+        "down": {"uv": [2.625, 0.125, 2.875, 0.375], "texture": "#0"}
+      }
+    }
+  ]
+}

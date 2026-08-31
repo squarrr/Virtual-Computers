@@ -1,0 +1,314 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.neoforged.moddev' version '2.0.144'
+    id 'idea'
+}
+
+tasks.named('wrapper', Wrapper).configure {
+    // Define wrapper values here so as to not have to always do so when updating gradlew.properties.
+    // Switching this to Wrapper.DistributionType.ALL will download the full gradle sources that comes with
+    // documentation attached on cursor hover of gradle classes and methods. However, this comes with increased
+    // file size for Gradle. If you do switch this to ALL, run the Gradle wrapper task twice afterwards.
+    // (Verify by checking gradle/wrapper/gradle-wrapper.properties to see if distributionUrl now points to `-all`)
+    distributionType = Wrapper.DistributionType.BIN
+}
+
+version = mod_version
+group = mod_group_id
+
+// Phase 0 step 4: share the RFB protocol code with the spike rather than copying it.
+// This is the loader-agnostic "common" module from plan section 15 in embryo - the mod
+// depends on transport code that has no Minecraft import anywhere in it. Promote this to
+// a real Gradle subproject in phase 1; the src-dir shortcut is fine only while it is one
+// package and one consumer.
+sourceSets.main.java {
+    srcDir("../vnc-spike/src")
+    exclude("vncspike/Spike.java")      // CLI harness: has a main() and pulls in AWT
+}
+
+// The level-of-detail arithmetic - the ladder, its hysteresis, and the projection that feeds them -
+// imports nothing from Minecraft on purpose, so it can be compiled and run against JOML alone. That
+// is what makes the numbers deciding every viewer's bandwidth checkable in about a second.
+//
+// `.\test-lod.cmd` is the fast path and needs neither Gradle nor Minecraft. This source set exists
+// so `gradlew build` compiles the tests too, and so `gradlew lodTest` can run them in CI.
+sourceSets {
+    lodTest {
+        java.srcDirs = ['src/test/java']
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+}
+sourceSets.test.java.srcDirs = []   // or the default test set claims the same files without JOML
+
+tasks.register('lodTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs the level-of-detail arithmetic checks.'
+    classpath = sourceSets.lodTest.runtimeClasspath
+    mainClass = 'LodMathTest'
+}
+tasks.named('check') { dependsOn 'lodTest' }
+
+// Phase 3's whole storage model is "one frozen template, one thin overlay per machine", and the
+// claim that makes it safe - that the overlays cannot see each other's writes - is either true of
+// qemu-img's backing files or the model is wrong. It is also invisible from inside the game: three
+// machines boot and three machines work right up until one writes over a block another was reading.
+//
+// So it is proved with qemu-io writing straight into an overlay, in about a second, with no guest.
+// Wired into `check` unlike vmSmoke, because it launches nothing and the registry half of it needs
+// no QEMU at all - a machine without QEMU still gets the checks it can run.
+tasks.register('storageTest', JavaExec) {
+    group = 'verification'
+    description = 'Proves the storage model: templates freeze, overlays stay independent.'
+    classpath = sourceSets.lodTest.runtimeClasspath
+    mainClass = 'StorageTest'
+    def storageDir = file('run')
+    doFirst { storageDir.mkdirs() }
+    workingDir = storageDir
+    // -PstorageTest.network also fetches a real image from its vendor and checks the pinned checksum
+    // against the actual bytes. That is the one claim in a shipped entry which cannot be verified by
+    // reading it - and it is a 275 MB download, so it is opt-in rather than part of `check`.
+    systemProperty 'vc.network', project.hasProperty('storageTest.network') ? 'true' : 'false'
+}
+tasks.named('check') { dependsOn 'storageTest' }
+
+// Phase 2's risk is not in the rendering, it is in the hypervisor: a snapshot that silently does
+// not save, or a resume that quietly cold-boots, both look exactly like success from inside the
+// game. So this boots a real guest, snapshots it, resumes it and requires the same picture back.
+//
+// NOT wired into `check`. It launches QEMU and takes about a minute, which is not something a
+// routine build should do - and on a machine with no hardware virtualization it correctly refuses
+// to run a guest at all, which would read as a broken build rather than as a working safeguard.
+tasks.register('vmSmoke', JavaExec) {
+    group = 'verification'
+    description = 'Boots a real guest, snapshots it, resumes it, and checks the picture survived.'
+    classpath = sourceSets.lodTest.runtimeClasspath
+    mainClass = 'VmSmokeTest'
+    // Run where the game runs, so its log4j output lands in run/logs with everything else rather
+    // than creating a stray mod/logs the repository would then have to ignore.
+    // Resolved here, at configuration time. Calling file() inside doFirst would reach for a Gradle
+    // script object during execution, which the configuration cache refuses.
+    def runDir = file('run')
+    doFirst { runDir.mkdirs() }
+    workingDir = runDir
+    // The same data directory runClient uses, so an ISO dropped in once serves both.
+    systemProperty 'vc.data', file('run/virtualcomputers').absolutePath
+    if (project.hasProperty('vc.iso')) {
+        systemProperty 'vc.iso', project.property('vc.iso')
+    }
+}
+
+// "After installing it, I can't get out of the installer" was -boot d rather than -boot once=d, and
+// the difference is only visible across a machine reset. Boots the same ISO twice, once per flag,
+// and requires the two to agree before the reset and disagree after it.
+//
+// Not in `check`: it launches two guests and needs a bootable ISO in the images folder.
+tasks.register('bootOrderTest', JavaExec) {
+    group = 'verification'
+    description = 'Proves -boot once=d releases the CD after the first boot, and -boot d does not.'
+    classpath = sourceSets.lodTest.runtimeClasspath
+    mainClass = 'BootOrderTest'
+    def bootRunDir = file('run')
+    doFirst { bootRunDir.mkdirs() }
+    workingDir = bootRunDir
+    systemProperty 'vc.data', file('run/virtualcomputers').absolutePath
+}
+
+// An entry that fetches, converts and clones perfectly and then boots the wrong thing passes every
+// other check here and fails in front of a person - which is exactly how LibreELEC shipped as a
+// "template" when its image is an installer. This boots what an entry actually produces, through the
+// shipped QemuVm.start, and checks it is the KIND of thing it claims to be: a template has to reach
+// a graphical mode, because a system draws an interface and a boot menu does not.
+//
+// Not in `check`: it downloads media and boots a guest.
+tasks.register('entryBootTest', JavaExec) {
+    group = 'verification'
+    description = 'Boots what an entry produces and checks it is the kind of thing it claims to be.'
+    classpath = sourceSets.lodTest.runtimeClasspath
+    mainClass = 'EntryBootTest'
+    def entryRunDir = file('run')
+    doFirst { entryRunDir.mkdirs() }
+    workingDir = entryRunDir
+    systemProperty 'vc.data', file('run/virtualcomputers').absolutePath
+    systemProperty 'vc.entry', project.findProperty('entry') ?: 'tv'
+}
+
+sourceSets.main.resources {
+    // Include resources generated by data generators.
+    srcDir('src/generated/resources')
+
+    // Exclude common development only resources from finalized outputs
+    exclude("**/*.bbmodel") // BlockBench project files
+
+    exclude("src/generated/**/.cache") // datagen cache files
+}
+
+repositories {
+    // Add here additional repositories if required by some of the dependencies below.
+}
+
+base {
+    archivesName = mod_id
+}
+
+// Mojang ships Java 25 to end users in 26.2, so mods should target Java 25.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+neoForge {
+    // Specify the version of NeoForge to use.
+    version = project.neo_version
+
+    // This line is optional. Access Transformers are automatically detected
+    // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
+
+    // Default run configurations.
+    // These can be tweaked, removed, or duplicated as needed.
+    runs {
+        client {
+            client()
+            // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+
+            // Point the screen at a real VNC server:
+            //   gradlew runClient -Pvc.vnc=127.0.0.1:5901
+            // This must be a systemProperty on the run rather than -D on the Gradle command
+            // line: -D reaches the Gradle daemon, but runClient forks a separate JVM that
+            // would never see it.
+            if (project.hasProperty('vc.vnc')) {
+                systemProperty 'vc.vnc', project.property('vc.vnc')
+            }
+            // There used to be a -Ptof.selftest here, which ran the pixel path once at startup and
+            // dumped the result. It is gone because it answered the wrong question: it proved the
+            // pixels reached GPU memory intact, which they always did - every phase 0 render bug
+            // was downstream of that. /vcharness reads the finished frame instead.
+        }
+
+        server {
+            server()
+            programArgument '--nogui'
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+        // This run config launches GameTestServer and runs all registered gametests, then exits.
+        // By default, the server will crash when no gametests are provided.
+        // The gametest system is also enabled by default for other run configs under the /test command.
+        gameTestServer {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        data {
+            clientData()
+            // example of overriding the workingDirectory set in configureEach above, uncomment if you want to use it
+            // gameDirectory = project.file('run-data')
+
+            // Specify the modid for data generation, where to output the resulting resource, and where to look for existing resources.
+            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
+        }
+
+        // applies to all the run configs above
+        configureEach {
+            // Recommended logging data for a userdev environment
+            // The markers can be added/remove as needed separated by commas.
+            // "SCAN": For mods scan.
+            // "REGISTRIES": For firing of registry events.
+            // "REGISTRYDUMP": For getting the contents of all registries.
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+
+            // Recommended logging level for the console
+            // You can set various levels here.
+            // Please read: https://stackoverflow.com/questions/2031163/when-to-use-the-different-log-levels
+            logLevel = org.slf4j.event.Level.DEBUG
+        }
+    }
+
+    mods {
+        // define mod <-> source bindings
+        // these are used to tell the game which sources are for which mod
+        // multi mod projects should define one per mod
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+// Sets up a dependency configuration called 'localRuntime'.
+// This configuration should be used instead of 'runtimeOnly' to declare
+// a dependency that will be present for runtime testing but that is
+// "optional", meaning it will not be pulled by dependents of this mod.
+configurations {
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    // Example optional mod dependency with JEI
+    // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
+    // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"
+    // compileOnly "mezz.jei:jei-${mc_version}-neoforge-api:${jei_version}"
+    // We add the full version to localRuntime, not runtimeOnly, so that we do not publish a dependency on it
+    // localRuntime "mezz.jei:jei-${mc_version}-neoforge:${jei_version}"
+
+    // Example mod dependency using a mod jar from ./libs with a flat dir repository
+    // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
+    // The group id is ignored when searching -- in this case, it is "blank"
+    // implementation "blank:coolmod-${mc_version}:${coolmod_version}"
+
+    // Example mod dependency using a file as dependency
+    // implementation files("libs/coolmod-${mc_version}-${coolmod_version}.jar")
+
+    // Example project dependency using a sister or child project:
+    // implementation project(":myproject")
+
+    // For more info:
+    // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
+    // http://www.gradle.org/docs/current/userguide/dependency_management.html
+}
+
+// This block of code expands all declared replace properties in the specified resource targets.
+// A missing property will result in an error. Properties are expanded using ${} Groovy notation.
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
+}
+// Include the output of "generateModMetadata" as an input directory for the build
+// this works with both building through Gradle and the IDE.
+sourceSets.main.resources.srcDir generateModMetadata
+// To avoid having to run "generateModMetadata" manually, make it run on every project reload
+neoForge.ideSyncTask generateModMetadata
+
+// Example configuration to allow publishing using the maven-publish plugin
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+// IDEA no longer automatically downloads sources/javadoc jars for dependencies, so we need to explicitly enable the behavior.
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}

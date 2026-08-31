@@ -1,0 +1,16 @@
+{
+  "id": "linux",
+  "name": "Linux (Debian 13.6)",
+  "kind": "installer",
+  "media": "iso",
+  "arch": ["x86_64"],
+  "firmware": "bios",
+  "disk_gb": 32,
+  "source": {
+    "url": "https://cdimage.debian.org/debian-cd/13.6.0/amd64/iso-cd/debian-13.6.0-amd64-netinst.iso",
+    "checksum": "sha256:65273beed27b2df543b68b65630ba525cfbad8df2b12035732b2dff87d6664e7",
+    "size": 791674880,
+    "archive": "none"
+  },
+  "notes": "Free to obtain and free to redistribute; the mod points at Debian's own mirror rather than hosting a copy, so players get the release with the hash published here. The version is pinned rather than tracking 'current', because 'current' moves on every point release and would take this checksum with it. The netinst is 755 MB and pulls the rest of the system from the network during installation, which is why this is the entry that shows off a real install running on a screen inside Minecraft."
+}

@@ -1,0 +1,26 @@
+# build output
+out/
+build/
+bin/
+*.class
+
+# spike artefacts and screenshots
+frames/
+*.png
+# ...but block textures are source, not artefacts. Without this the mod ships with
+# missing-texture blocks for everyone who clones it, and nothing says why.
+!mod/src/main/resources/assets/**/*.png
+
+# VM images and installation media - never commit these
+*.qcow2
+*.iso
+*.img
+*.vhd
+*.vhdx
+images/
+
+# tooling
+.gradle/
+.idea/
+*.iml
+.vscode/

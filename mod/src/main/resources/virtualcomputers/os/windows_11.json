@@ -1,0 +1,12 @@
+{
+  "id": "windows_11",
+  "name": "Windows 11",
+  "kind": "installer",
+  "media": "iso",
+  "arch": ["x86_64"],
+  "firmware": "uefi_secure",
+  "disk_gb": 64,
+  "source": {},
+  "local_hint": "Put a Windows 11 ISO in the images folder. Get one from Microsoft's own download page - the licence to run it stays yours, and this mod neither supplies one nor grants one.",
+  "notes": "Needs UEFI with Secure Boot and a TPM 2.0, which its installer checks and refuses without. The firmware half is available - QEMU ships edk2-x86_64-secure-code.fd - but the TPM half is not: the QEMU build distributed for Windows has no TPM support compiled in at all, so there is nothing for swtpm to attach to even if swtpm were installed. The mod says so before a player spends an hour on it. Windows 10 is unaffected and installs normally. Per-machine TPM state is designed for and will be created per overlay the moment a TPM exists to create it for, because TPM state is tied to a disk's identity and a shared or regenerated one invalidates BitLocker and produces a machine that will not boot with no obvious cause."
+}
