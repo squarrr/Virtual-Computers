@@ -9,13 +9,17 @@ import squarrr.virtualcomputers.machine.Machine;
 import squarrr.virtualcomputers.machine.MachineState;
 import squarrr.virtualcomputers.machine.Machines;
 import squarrr.virtualcomputers.machine.PanelSpec;
+import squarrr.virtualcomputers.vm.Checksum;
 import squarrr.virtualcomputers.vm.Hypervisor;
+import squarrr.virtualcomputers.vm.ImageFetch;
 import squarrr.virtualcomputers.vm.OsEntry;
 import squarrr.virtualcomputers.vm.OsRegistry;
+import squarrr.virtualcomputers.vm.Templates;
 import squarrr.virtualcomputers.vm.VmSpec;
 import squarrr.virtualcomputers.vm.VmStore;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -132,10 +136,44 @@ public final class Focus implements DisplayInteraction {
 
         if (finish) {
             machine.commitTemplate(entry, say);
-        } else {
-            machine.install(entry, false, say);
+            return true;
         }
+        if (needsDownload(entry) && minecraft.gui.screen() == null) {
+            askBeforeDownloading(minecraft, entry, () -> machine.install(entry, false, say));
+            return true;
+        }
+        machine.install(entry, false, say);
         return true;
+    }
+
+    private static boolean needsDownload(OsEntry entry) {
+        return !entry.isLocalOnly()
+                && !Templates.exists(entry.id())
+                && !ImageFetch.mediaReady(entry);
+    }
+
+    /** Nothing is fetched until the player has seen what, and from where. */
+    private static void askBeforeDownloading(Minecraft minecraft, OsEntry entry, Runnable proceed) {
+        String host = entry.source().url().replaceFirst("^https://([^/]+)/.*$", "$1");
+        Checksum checksum = Checksum.parse(entry.source().checksum(), entry.id());
+        String message = "This downloads " + Templates.human(entry.source().size())
+                + " from " + host + " to your computer.\n\n"
+                + "The file comes from the people who make " + entry.name()
+                + ", not from this mod. It is checked against a published "
+                + checksum.algorithm() + " before anything uses it.\n\n"
+                + "It is kept in run/virtualcomputers/images and only downloaded once, however many"
+                + " machines you build.";
+        minecraft.gui.setScreen(new ConfirmScreen(
+                yes -> {
+                    minecraft.gui.setScreen(null);
+                    if (yes) {
+                        proceed.run();
+                    }
+                },
+                Component.literal("Download " + entry.name() + "?"),
+                Component.literal(message),
+                Component.literal("Download"),
+                Component.literal("Cancel")));
     }
 
     private static Machine.Reporter reporter(Minecraft minecraft) {

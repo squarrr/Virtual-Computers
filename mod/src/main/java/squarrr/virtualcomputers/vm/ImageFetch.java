@@ -27,6 +27,13 @@ public final class ImageFetch {
     private ImageFetch() {
     }
 
+    /** No image yet for an entry the player supplies themselves. Nothing has gone wrong. */
+    public static final class MediaMissing extends IOException {
+        public MediaMissing(String message) {
+            super(message);
+        }
+    }
+
     public static Path directory() {
         Path directory = VmStore.root().resolve("images");
         try {
@@ -35,6 +42,26 @@ public final class ImageFetch {
             LOGGER.error("[os] cannot create {}", directory, e);
         }
         return directory;
+    }
+
+    /** True when nothing would be downloaded, so callers can ask before starting one. */
+    public static boolean mediaReady(OsEntry entry) {
+        if (entry.isLocalOnly()) {
+            return true;
+        }
+        Path media = directory().resolve(entry.mediaFileName());
+        if (!Files.isRegularFile(media)) {
+            return false;
+        }
+        try {
+            Path marker = markerFor(media);
+            return Files.isRegularFile(marker)
+                    && Files.readString(marker, StandardCharsets.UTF_8).trim()
+                            .equalsIgnoreCase(Checksum.parse(entry.source().checksum(),
+                                    entry.id()).toString());
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
     }
 
     public static Path ensureMedia(OsEntry entry, Checksum.Progress progress) throws IOException {
@@ -88,10 +115,11 @@ public final class ImageFetch {
         if (chosen != null) {
             return chosen;
         }
-        throw new IOException(entry.name() + " needs media you supply yourself.\n  "
+        throw new MediaMissing(entry.name() + " has no image here yet.\n  "
                 + (entry.localHint() != null ? entry.localHint()
                     : "Put a bootable image in the images folder.")
-                + "\n  Folder: " + directory());
+                + "\n  Folder: " + directory()
+                + "\n  Drop it in and use the box again - nothing else has to be redone.");
     }
 
     private static long download(String url, Path target, long expectedSize,

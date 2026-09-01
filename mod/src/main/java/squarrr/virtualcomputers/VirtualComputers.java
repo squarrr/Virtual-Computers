@@ -72,7 +72,6 @@ public class VirtualComputers {
     public static final DeferredItem<OsBoxItem> WINDOWS_11_OS = osBox("windows_11_os", "windows_11");
     public static final DeferredItem<OsBoxItem> LINUX_OS = osBox("linux_os", "linux");
     public static final DeferredItem<OsBoxItem> TV_OS = osBox("tv_os", "tv");
-    public static final DeferredItem<OsBoxItem> CHROME_OS = osBox("chrome_os", "chrome_os");
     public static final DeferredItem<OsBoxItem> CUSTOM_OS = osBox("custom_os", "custom");
 
     public VirtualComputers(IEventBus modEventBus, ModContainer modContainer) {

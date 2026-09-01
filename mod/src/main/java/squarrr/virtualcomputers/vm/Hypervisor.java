@@ -225,16 +225,13 @@ public final class Hypervisor {
         return null;
     }
 
+    private static final long PROBE_TIMEOUT_MS = 20_000;
+
+    /** These run before anything is on screen, so they must be the kind that always come back. */
     private static String runAndCapture(List<String> command) {
         try {
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes());
-            process.waitFor();
-            return output;
+            return Exec.run(command, PROBE_TIMEOUT_MS).output();
         } catch (IOException e) {
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
             return null;
         }
     }

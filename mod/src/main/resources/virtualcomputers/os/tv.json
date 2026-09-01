@@ -3,7 +3,9 @@
   "name": "TV OS (LibreELEC 12.2.1)",
   "kind": "installer",
   "media": "disk",
-  "arch": ["x86_64"],
+  "arch": [
+    "x86_64"
+  ],
   "firmware": "bios",
   "disk_gb": 16,
   "source": {
@@ -12,5 +14,5 @@
     "size": 288722782,
     "archive": "gz"
   },
-  "notes": "An installer, not a template, and it was classified wrong until somebody booted it. The generic .img looks like a prebuilt system and is not: it boots a SYSLINUX menu offering 'installer: permanently install LibreELEC to HDD/SSD', 'live: boot using RAM', and 'run: boot using this USB memory device', and it defaults to installer after five seconds. Cloned as a machine's only disk it therefore came up offering to install itself onto the media it was running from. So it is media, attached alongside a blank disk that it installs onto, exactly like ChromeOS Flex - which is the other entry whose installer arrives as a raw disk rather than an ISO. The checksum is the one LibreELEC publishes in its own releases.json, so it was read from the vendor rather than computed here. Kodi's whole interface exists to be driven from a sofa, which is why this is the television's operating system and not a matter of taste: a television has no USB, so its only direct input is a remote, and almost everything else assumes a mouse. Generic x86_64 only - LibreELEC builds ARM64 per board and publishes no generic ARM64 UEFI image a virtual machine could boot, so on Apple Silicon this entry has no media and a recipe is the answer."
+  "notes": "An installer, not a template, and it was classified wrong until somebody booted it. The generic .img looks like a prebuilt system and is not: it boots a SYSLINUX menu offering 'installer: permanently install LibreELEC to HDD/SSD', 'live: boot using RAM', and 'run: boot using this USB memory device', and it defaults to installer after five seconds. Cloned as a machine's only disk it therefore came up offering to install itself onto the media it was running from. So it is media, attached alongside a blank disk that it installs onto, which is what the media field on an entry is for: an installer arriving as a raw disk is attached differently from one arriving as a CD, and each machine gets its own overlay on it so the shared download is never written to. The checksum is the one LibreELEC publishes in its own releases.json, so it was read from the vendor rather than computed here. Kodi's whole interface exists to be driven from a sofa, which is why this is the television's operating system and not a matter of taste: a television has no USB, so its only direct input is a remote, and almost everything else assumes a mouse. Generic x86_64 only - LibreELEC builds ARM64 per board and publishes no generic ARM64 UEFI image a virtual machine could boot, so on Apple Silicon this entry has no media and a recipe is the answer."
 }

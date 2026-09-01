@@ -10,10 +10,9 @@ To setup a computer you will need an operating system for it, these are craftabl
 that point at the operating system you want to install. There are many premade OS items that you can
 simply use without any searching for ISO downloads, these being:
 
-*   Windows 10 x64 (you supply the ISO)
+*   Windows 10 x64 (you download the ISO)
 *   Windows 11 x64 (broken)
 *   Linux x64 (Debian 13)
-*   ChromeOS Flex x64 (ChromeOS but smaller, completely free to use/download, and purposed for old computers)
 *   Libre Elec x64 (open source TV system that uses an imaging system instead of ISO)
 *   A custom ISO of your choice
 *   BlissOS x64 (open source android community build) — *planned, not in the mod yet*
@@ -32,9 +31,9 @@ There are a handful of different computers types that are planned for this mod, 
 *   **Desktop PC** — in the mod. A placable computer tower that requires a display and peripherals to function, aswell as shutting down when broken, good for customizability
 *   **Laptop** — in the mod. A placable laptop that is fully self contained with a display and all the peripherals you will need, aswell as only sleeping when broken, allowing for portability. The downside is the extremely small display, that is often extremely hard to read off of
 *   **Screen** — in the mod. A dumb panel with no computer in it, showing whatever the tower is doing. Place several and they all show it
-*   TV — planned. A display containing a small computer and requires a TV remote to use, this is good for placing in a main room to hang out with friends in
-*   Tablet — planned. A computer of similar size to the laptop, the difference being it is used in your hands instead of on a block, which increasing it's usability by a lot. Since it only has a touch screen, Bliss OS is the only operating system that the item will take
-*   Smart Phone — planned. Similar to the tablet, but only requiring one hand that includes the offhand while being half the size
+*   **TV** — planned. A display containing a small computer and requires a TV remote to use, this is good for placing in a main room to hang out with friends in
+*   **Tablet** — planned. A computer of similar size to the laptop, the difference being it is used in your hands instead of on a block, which increasing it's usability by a lot. Since it only has a touch screen, Bliss OS is the only operating system that the item will take
+*   **Smart Phone** — planned. Similar to the tablet, but only requiring one hand that includes the offhand while being half the size
 
 ## Peripherals
 
@@ -76,7 +75,7 @@ It's built for Windows 10/11, macOS and Linux, and only Windows has actually bee
 
 ## Running
 
-Everything the mod downloads or creates goes to `mod/run/virtualcomputers/`
+Everything the mod downloads or creates goes to "virtualcomputers" which is a folder created in the pack.
 
 ## Credits
 

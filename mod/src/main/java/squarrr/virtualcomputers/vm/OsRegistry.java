@@ -22,7 +22,7 @@ public final class OsRegistry {
     private static final String BUILT_IN_PATH = "/virtualcomputers/os/";
 
     public static final List<String> BOXED = List.of(
-            "windows_10", "windows_11", "linux", "tv", "chrome_os", "custom");
+            "windows_10", "windows_11", "linux", "tv", "custom");
 
     public static final List<String> EXTRA = List.of("debian_cloud", "tv_kodi");
 

@@ -92,6 +92,11 @@ public final class Templates {
     }
 
     public static void createOverlay(Path overlay, Path template, int sizeGb) throws IOException {
+        createOverlay(overlay, template, "qcow2", sizeGb);
+    }
+
+    public static void createOverlay(Path overlay, Path template, String backingFormat, int sizeGb)
+            throws IOException {
         Hypervisor.Diagnosis diagnosis = Hypervisor.diagnose();
         if (diagnosis.qemuImg() == null) {
             throw new IOException("qemu-img is not available, so a disk cannot be created");
@@ -102,7 +107,7 @@ public final class Templates {
         Files.createDirectories(overlay.getParent());
         List<String> command = new ArrayList<>(List.of(
                 diagnosis.qemuImg().toString(), "create", "-f", "qcow2",
-                "-b", template.toAbsolutePath().toString(), "-F", "qcow2",
+                "-b", template.toAbsolutePath().toString(), "-F", backingFormat,
                 overlay.toAbsolutePath().toString()));
         long templateBytes = virtualSize(template);
         long wanted = sizeGb * 1024L * 1024L * 1024L;
@@ -141,39 +146,52 @@ public final class Templates {
         return Files.isRegularFile(template) && template.toFile().setWritable(true);
     }
 
+    private static final String[] UNITS = {"KB", "MB", "GB", "TB", "PB"};
+
     public static String human(long bytes) {
-        if (bytes >= 1L << 30) {
-            return String.format("%.1f GB", bytes / (double) (1L << 30));
+        if (bytes < 1024L) {
+            return bytes + " B";
         }
-        if (bytes >= 1L << 20) {
-            return String.format("%.0f MB", bytes / (double) (1L << 20));
+        double value = bytes / 1024.0;
+        int unit = 0;
+        while (value >= 1024.0 && unit < UNITS.length - 1) {
+            value /= 1024.0;
+            unit++;
         }
-        return bytes + " B";
+        return String.format(java.util.Locale.ROOT, value < 10.0 ? "%.1f %s" : "%.0f %s",
+                value, UNITS[unit]);
+    }
+
+    /** Every machine disk that is a copy-on-write overlay on this template, and would break without it. */
+    public static List<Path> dependents(String entryId) {
+        List<Path> using = new ArrayList<>();
+        for (Path root : VmStore.knownLocations()) {
+            Path disks = root.resolve("disks");
+            if (!Files.isDirectory(disks)) {
+                continue;
+            }
+            try (java.util.stream.Stream<Path> listed = Files.list(disks)) {
+                for (Path disk : listed.filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().endsWith(".qcow2")).toList()) {
+                    if (entryId.equals(VmStore.templateBehind(disk))) {
+                        using.add(disk);
+                    }
+                }
+            } catch (IOException e) {
+                LOGGER.debug("[os] could not read {}: {}", disks, e.getMessage());
+            }
+        }
+        return using;
     }
 
     private static String capture(List<String> command) throws IOException {
-        try {
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes());
-            process.waitFor();
-            return output;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted", e);
-        }
+        return Exec.run(command, Exec.QUICK_MS).output();
     }
 
     private static void run(List<String> command, String what) throws IOException {
-        try {
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes());
-            int status = process.waitFor();
-            if (status != 0) {
-                throw new IOException("qemu-img could not " + what + ": " + output.trim());
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted while trying to " + what, e);
+        Exec.Result result = Exec.run(command, Exec.PATIENT_MS);
+        if (!result.ok()) {
+            throw new IOException("qemu-img could not " + what + ": " + result.complaint());
         }
     }
 }

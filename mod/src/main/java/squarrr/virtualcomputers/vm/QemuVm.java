@@ -114,8 +114,13 @@ public final class QemuVm {
         boolean diskMedia = plan.bootFromMedia() && plan.media() != null
                 && entry != null && entry.media() == OsEntry.Media.DISK;
         if (diskMedia) {
+            Path scratch = VmStore.mediaOverlayFor(machineId);
+            if (!Files.isRegularFile(scratch)) {
+                Files.createDirectories(scratch.getParent());
+                Templates.createOverlay(scratch, plan.media(), "raw", 0);
+            }
             command.add("-drive");
-            command.add("file=" + plan.media() + ",format=raw,index=0,media=disk");
+            command.add("file=" + scratch + ",format=qcow2,index=0,media=disk");
         }
         command.add("-drive");
         command.add("file=" + VmStore.diskFor(machineId) + ",format=qcow2"

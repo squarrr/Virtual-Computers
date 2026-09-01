@@ -1,5 +1,6 @@
 package squarrr.virtualcomputers;
 
+import squarrr.virtualcomputers.gui.StorageScreen;
 import squarrr.virtualcomputers.harness.RenderHarness;
 import squarrr.virtualcomputers.input.Focus;
 import squarrr.virtualcomputers.input.VcKeys;
@@ -11,6 +12,12 @@ import squarrr.virtualcomputers.vm.Hypervisor;
 import squarrr.virtualcomputers.vm.OsRegistry;
 import squarrr.virtualcomputers.vm.Templates;
 import squarrr.virtualcomputers.vm.VmStore;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -21,6 +28,7 @@ import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
 
 @Mod(value = VirtualComputers.MODID, dist = Dist.CLIENT)
@@ -63,6 +71,30 @@ public class VirtualComputersClient {
             VcKeys.register(event);
         }
 
+        /** Adds a storage button under Save and Quit, matched to its size and position. */
+        @SubscribeEvent
+        static void onScreenInit(ScreenEvent.Init.Post event) {
+            if (!(event.getScreen() instanceof PauseScreen pause)) {
+                return;
+            }
+            AbstractWidget anchor = null;
+            for (GuiEventListener listener : event.getListenersList()) {
+                if (listener instanceof AbstractWidget widget && widget.getWidth() == 204
+                        && (anchor == null || widget.getY() > anchor.getY())) {
+                    anchor = widget;
+                }
+            }
+            if (anchor == null) {
+                return;
+            }
+            event.addListener(Button.builder(
+                            Component.translatable("menu.virtualcomputers.storage"),
+                            b -> Minecraft.getInstance().gui.setScreen(new StorageScreen(pause)))
+                    .bounds(anchor.getX(), anchor.getY() + anchor.getHeight() + 4,
+                            anchor.getWidth(), anchor.getHeight())
+                    .build());
+        }
+
         @SubscribeEvent
         static void registerCommands(RegisterClientCommandsEvent event) {
             event.getDispatcher().register(RenderHarness.command());
@@ -78,6 +110,7 @@ public class VirtualComputersClient {
         @SubscribeEvent
         static void onLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
             DisplayRenderer.forgetAll();
+            PlacedMachines.clear();
             Machines.closeAll();
         }
 

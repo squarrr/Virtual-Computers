@@ -12,6 +12,8 @@
   "item.virtualcomputers.windows_11_os": "Windows 11 OS",
   "item.virtualcomputers.linux_os": "Linux OS",
   "item.virtualcomputers.tv_os": "TV OS",
-  "item.virtualcomputers.chrome_os": "Chrome OS",
-  "item.virtualcomputers.custom_os": "Custom OS"
+  "item.virtualcomputers.custom_os": "Custom OS",
+  "menu.virtualcomputers.storage": "Virtual Computers",
+  "screen.virtualcomputers.storage": "Virtual Computers Storage",
+  "menu.virtualcomputers.delete": "Delete"
 }

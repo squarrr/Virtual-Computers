@@ -1,9 +1,11 @@
 import squarrr.virtualcomputers.vm.Checksum;
+import squarrr.virtualcomputers.vm.Cleanup;
 import squarrr.virtualcomputers.vm.Hypervisor;
 import squarrr.virtualcomputers.vm.ImageFetch;
 import squarrr.virtualcomputers.vm.OsEntry;
 import squarrr.virtualcomputers.vm.OsRegistry;
 import squarrr.virtualcomputers.vm.Provisioning;
+import squarrr.virtualcomputers.vm.StorageReport;
 import squarrr.virtualcomputers.vm.Templates;
 import squarrr.virtualcomputers.vm.VmStore;
 import com.google.gson.JsonObject;
@@ -31,6 +33,10 @@ public final class StorageTest {
             registryParses();
             registryRejectsWhatItShould();
             seedsAreValidYaml();
+            knowsWhenItWouldDownload();
+            nothingIsWrittenOutsideWithoutAsking(scratch);
+            theStorageReportAddsUp(scratch);
+            sizesReadTheWayPeopleWriteThem();
             checksumsWork();
 
             if (Hypervisor.diagnose().qemuImg() == null) {
@@ -40,6 +46,7 @@ public final class StorageTest {
                 overlaysAreIndependent(scratch);
                 aTemplateIsFrozen(scratch);
                 aDiskKnowsWhatItWasClonedFrom(scratch);
+                deletingRemovesExactlyWhatItSaid(scratch);
                 if (Boolean.getBoolean("vc.network")) {
                     theRealThingActuallyDownloads();
                 } else {
@@ -59,8 +66,8 @@ public final class StorageTest {
     private static void registryParses() {
         section("The registry");
 
-        check("six OS boxes ship", OsRegistry.BOXED.size() == 6, "got " + OsRegistry.BOXED);
-        for (String id : List.of("windows_10", "windows_11", "linux", "tv", "chrome_os", "custom")) {
+        check("five OS boxes ship", OsRegistry.BOXED.size() == 5, "got " + OsRegistry.BOXED);
+        for (String id : List.of("windows_10", "windows_11", "linux", "tv", "custom")) {
             check(id + " is one of them", OsRegistry.BOXED.contains(id), "missing");
         }
 
@@ -104,13 +111,6 @@ public final class StorageTest {
         check("an archived entry's media name loses the .gz",
                 tv != null && tv.mediaFileName().endsWith(".img"),
                 tv == null ? "no entry" : tv.mediaFileName());
-        OsEntry flex = OsRegistry.get("chrome_os");
-        check("a zipped entry's media name loses the .zip",
-                flex != null && flex.mediaFileName().endsWith(".bin"),
-                flex == null ? "no entry" : flex.mediaFileName());
-        check("ChromeOS Flex installs from a raw disk, not an ISO",
-                flex != null && flex.media() == OsEntry.Media.DISK,
-                flex == null ? "no entry" : String.valueOf(flex.media()));
         OsEntry eleven = OsRegistry.get("windows_11");
         check("Windows 11 asks for Secure Boot firmware",
                 eleven != null && eleven.firmware() == OsEntry.Firmware.UEFI_SECURE,
@@ -119,6 +119,7 @@ public final class StorageTest {
         check("Windows 10 does not",
                 ten != null && ten.firmware() != OsEntry.Firmware.UEFI_SECURE,
                 ten == null ? "no entry" : String.valueOf(ten.firmware()));
+
     }
 
     private static void registryRejectsWhatItShould() {
@@ -272,6 +273,129 @@ public final class StorageTest {
         return true;
     }
 
+    private static void knowsWhenItWouldDownload() {
+        section("Knowing before downloading");
+
+        for (String id : List.of("windows_10", "windows_11", "custom", "tv_kodi")) {
+            OsEntry entry = OsRegistry.get(id);
+            check(id + " needs no download, so it never prompts",
+                    entry != null && ImageFetch.mediaReady(entry), "reported as needing a download");
+        }
+        for (String id : List.of("linux", "tv", "debian_cloud")) {
+            OsEntry entry = OsRegistry.get(id);
+            check(id + " has nothing cached here, so it would prompt first",
+                    entry != null && !ImageFetch.mediaReady(entry), "reported as already present");
+        }
+    }
+
+    private static void theStorageReportAddsUp(Path scratch) throws Exception {
+        section("The storage report");
+
+        Files.createDirectories(scratch.resolve("disks"));
+        Files.createDirectories(scratch.resolve("templates"));
+        Files.createDirectories(scratch.resolve("images"));
+        Files.createDirectories(scratch.resolve("consoles"));
+        Files.write(scratch.resolve("disks/aaa-111.qcow2"), new byte[3000]);
+        Files.write(scratch.resolve("disks/bbb-222.qcow2"), new byte[5000]);
+        Files.write(scratch.resolve("templates/linux.qcow2"), new byte[7000]);
+        Files.write(scratch.resolve("images/thing.iso"), new byte[11000]);
+        Files.writeString(scratch.resolve("images/thing.iso.verified"), "sha256:abc");
+        Files.writeString(scratch.resolve("consoles/aaa-111.log"),
+                "Debian GNU/Linux 13 tellytubby ttyS0\n\ntellytubby login: ");
+
+        Files.writeString(scratch.resolve("disks/aaa-111.qcow2.os"), "linux");
+        try (java.io.RandomAccessFile big =
+                     new java.io.RandomAccessFile(scratch.resolve("disks/ccc-333.qcow2").toFile(), "rw")) {
+            big.setLength(40L * 1024 * 1024);
+        }
+
+        StorageReport report = StorageReport.collect();
+        StorageReport.Location here = report.locations().stream()
+                .filter(StorageReport.Location::current).findFirst().orElse(null);
+        check("this instance appears in the report", here != null, "not found");
+        if (here == null) {
+            return;
+        }
+        check("every machine disk is listed", here.disks().size() == 3,
+                "got " + here.disks().size());
+        check("a marker beside the disk says which operating system is on it",
+                here.disks().stream().anyMatch(d -> "linux".equals(d.os())),
+                "got " + here.disks().stream().map(StorageReport.Disk::os).toList());
+        check("an .os marker is not mistaken for a machine",
+                here.disks().stream().noneMatch(d -> d.id().endsWith(".qcow2")),
+                "a marker was listed as a disk");
+        check("a disk with something on it is not reported as empty just because nothing named it",
+                here.disks().stream().anyMatch(d -> d.os() == null && d.installed()),
+                "the big unnamed disk was called empty");
+        check("and a disk with nothing on it still reads as empty",
+                here.disks().stream().anyMatch(d -> d.os() == null && !d.installed()),
+                "no empty disk found");
+        check("a hostname is read out of the guest's own console",
+                here.disks().stream().anyMatch(d -> "tellytubby".equals(d.hostname())),
+                "got " + here.disks().stream().map(StorageReport.Disk::hostname).toList());
+        check("a machine with no console log has no hostname to show",
+                here.disks().stream().anyMatch(d -> d.hostname() == null), "all had one");
+        check("each disk reports when it was added",
+                here.disks().stream().allMatch(d -> d.addedEpochMs() > 0), "a timestamp was missing");
+
+        long disksBytes = here.disks().stream().mapToLong(StorageReport.Disk::bytes).sum();
+        long groupBytes = here.groups().stream().mapToLong(StorageReport.Group::bytes).sum();
+        check("machine disks add up", disksBytes == 8000 + 40L * 1024 * 1024,
+                "got " + disksBytes);
+        check("installed operating systems are counted on their own",
+                groupBytes("Installed operating systems", here) == 7000,
+                "got " + groupBytes("Installed operating systems", here));
+        check("downloaded media is counted on its own",
+                groupBytes("Downloaded media", here) == 11000,
+                "got " + groupBytes("Downloaded media", here));
+        check("the .verified marker is not counted as media",
+                here.groups().stream().filter(g -> g.label().contains("media"))
+                        .allMatch(g -> g.count() == 1), "the marker was counted");
+        check("the location total is machines plus everything else",
+                here.total() == disksBytes + groupBytes,
+                here.total() + " vs " + (disksBytes + groupBytes));
+        check("the grand total is at least this location", report.total() >= here.total(),
+                "got " + report.total());
+    }
+
+    private static void nothingIsWrittenOutsideWithoutAsking(Path scratch) throws Exception {
+        section("Looking in other instances is opt-in");
+
+        Path index = scratch.resolve("elsewhere/locations.txt");
+        System.setProperty("vc.locations", index.toString());
+        Files.deleteIfExists(index);
+
+        check("nobody has been asked yet", VmStore.sharing() == VmStore.Sharing.UNSET,
+                String.valueOf(VmStore.sharing()));
+        check("and until they are, only this instance is looked at",
+                VmStore.knownLocations().size() == 1, "got " + VmStore.knownLocations());
+        check("no file has appeared outside this instance's own folder", !Files.exists(index),
+                index + " was created without being asked for");
+
+        VmStore.setSharing(false);
+        check("saying no is remembered", VmStore.sharing() == VmStore.Sharing.DECLINED,
+                String.valueOf(VmStore.sharing()));
+        check("saying no still writes nothing outside", !Files.exists(index), "a file appeared");
+        check("and still shows only this instance", VmStore.knownLocations().size() == 1,
+                "got " + VmStore.knownLocations());
+
+        VmStore.setSharing(true);
+        check("saying yes is remembered", VmStore.sharing() == VmStore.Sharing.ALLOWED,
+                String.valueOf(VmStore.sharing()));
+        check("only then does the list exist", Files.exists(index), "no file");
+        check("and it holds this instance's folder",
+                Files.readString(index, StandardCharsets.UTF_8).contains(scratch.toString()),
+                Files.readString(index, StandardCharsets.UTF_8).trim());
+
+        VmStore.setSharing(false);
+        System.clearProperty("vc.locations");
+    }
+
+    private static long groupBytes(String label, StorageReport.Location location) {
+        return location.groups().stream().filter(g -> g.label().equals(label))
+                .mapToLong(StorageReport.Group::bytes).sum();
+    }
+
     private static void checksumsWork() throws Exception {
         section("Checksums");
 
@@ -397,6 +521,104 @@ public final class StorageTest {
         check("a machine with no template reports none",
                 VmStore.osOf("plain-machine") == null,
                 "got " + VmStore.osOf("plain-machine"));
+    }
+
+    private static void sizesReadTheWayPeopleWriteThem() {
+        section("Sizes read the way people write them");
+
+        check("under a kilobyte is still bytes", "1023 B".equals(Templates.human(1023)),
+                Templates.human(1023));
+        check("an empty machine disk is not six digits of bytes",
+                "193 KB".equals(Templates.human(197120)), Templates.human(197120));
+        check("a firmware store reads in kilobytes",
+                "528 KB".equals(Templates.human(540672)), Templates.human(540672));
+        check("exactly one megabyte is a megabyte, not 1024 KB",
+                "1.0 MB".equals(Templates.human(1L << 20)), Templates.human(1L << 20));
+        check("a template reads in megabytes",
+                "952 MB".equals(Templates.human(998309888L)), Templates.human(998309888L));
+        check("an installed machine reads in gigabytes",
+                "7.1 GB".equals(Templates.human(7614169088L)), Templates.human(7614169088L));
+        check("and a whole library reads in terabytes",
+                "1.5 TB".equals(Templates.human(1649267441664L)), Templates.human(1649267441664L));
+        check("no size lands in a unit it has no business in",
+                java.util.stream.LongStream.of(1023L, 1024L, 1L << 20, 1L << 30, 1L << 40)
+                        .mapToObj(Templates::human)
+                        .map(text -> text.replaceAll("[0-9. ]", "")).distinct().count() == 5,
+                "two different magnitudes printed the same unit");
+    }
+
+    private static void deletingRemovesExactlyWhatItSaid(Path scratch) throws Exception {
+        section("Deleting");
+
+        Files.createDirectories(scratch.resolve("consoles"));
+        Files.createDirectories(scratch.resolve("firmware"));
+        Files.write(scratch.resolve("disks/ddd-444.qcow2"), new byte[9000]);
+        Files.writeString(scratch.resolve("disks/ddd-444.qcow2.os"), "linux");
+        Files.writeString(scratch.resolve("consoles/ddd-444.log"), "boot");
+        Files.write(scratch.resolve("firmware/ddd-444_VARS.fd"), new byte[100]);
+        Path bystander = scratch.resolve("disks/eee-555.qcow2");
+        Files.write(bystander, new byte[64]);
+
+        Cleanup.Plan machine = Cleanup.forMachine(scratch, "ddd-444", "ddd-444");
+        check("a computer takes its disk, its marker, its console log and its firmware with it",
+                machine.files().size() == 4, "got " + machine.files());
+        check("and says how much that frees before anything is deleted",
+                machine.bytes() == 9109, "got " + machine.bytes());
+        check("deleting it frees what it said", Cleanup.delete(machine) == 9109, "wrong total");
+        check("the computer is gone", !Files.exists(scratch.resolve("disks/ddd-444.qcow2"))
+                && !Files.exists(scratch.resolve("consoles/ddd-444.log"))
+                && !Files.exists(scratch.resolve("firmware/ddd-444_VARS.fd")), "something survived");
+        check("and nothing else was touched", Files.isRegularFile(bystander), "a bystander went too");
+
+        Files.write(scratch.resolve("images/keeper.iso"), new byte[2048]);
+        Files.writeString(scratch.resolve("images/keeper.iso.verified"), "sha256:abc");
+        StorageReport.Group media = groupOf(StorageReport.Kind.MEDIA);
+        StorageReport.Item keeper = media.items().stream()
+                .filter(i -> i.name().equals("keeper.iso")).findFirst().orElseThrow();
+        Cleanup.Plan download = Cleanup.forItem(media, keeper);
+        check("deleting a download takes the checksum marker beside it",
+                download.files().size() == 2, "got " + download.files());
+        Cleanup.delete(download);
+        check("both are gone", !Files.exists(scratch.resolve("images/keeper.iso"))
+                && !Files.exists(scratch.resolve("images/keeper.iso.verified")), "one survived");
+
+        StorageReport.Group templates = groupOf(StorageReport.Kind.TEMPLATES);
+        StorageReport.Item testOs = templates.items().stream()
+                .filter(i -> i.name().equals("test_os")).findFirst().orElseThrow();
+        Cleanup.Plan needed = Cleanup.forItem(templates, testOs);
+        check("A TEMPLATE WITH A MACHINE ON IT IS REFUSED", !needed.allowed(),
+                "it offered to delete a template that machines are running on");
+        check("and the refusal counts the machines that would break",
+                needed.refusal() != null && needed.refusal().startsWith("One computer is"),
+                String.valueOf(needed.refusal()));
+        check("refusing is not advice, it is enforced", refused(needed), "delete went ahead anyway");
+        check("the template is still there", Files.isRegularFile(Templates.forEntry("test_os")),
+                "it was deleted");
+
+        Cleanup.delete(Cleanup.forMachine(scratch, "some-machine", "some-machine"));
+        Cleanup.Plan free = Cleanup.forItem(templates, testOs);
+        check("once nothing is built on it, the template can go", free.allowed(),
+                String.valueOf(free.refusal()));
+        check("and a read-only template really is deleted", Cleanup.delete(free) > 0
+                && !Files.exists(Templates.forEntry("test_os")),
+                "the frozen file survived deletion");
+    }
+
+    private static boolean refused(Cleanup.Plan plan) {
+        try {
+            Cleanup.delete(plan);
+            return false;
+        } catch (IOException expected) {
+            return true;
+        }
+    }
+
+    private static StorageReport.Group groupOf(StorageReport.Kind kind) {
+        return StorageReport.collect().locations().stream()
+                .filter(StorageReport.Location::current)
+                .flatMap(l -> l.groups().stream())
+                .filter(g -> g.kind() == kind)
+                .findFirst().orElseThrow();
     }
 
     private static void theRealThingActuallyDownloads() throws Exception {

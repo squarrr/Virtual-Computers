@@ -7,8 +7,8 @@ import java.util.List;
 import java.util.Locale;
 
 public record OsEntry(String id, String name, Kind kind, Media media, List<String> arch,
-                      Source source, Firmware firmware, int diskGb, String base, String provision,
-                      String notes, String localHint) {
+                      Source source, Firmware firmware, int diskGb, String base,
+                      String provision, String notes, String localHint) {
     public enum Kind { INSTALLER, TEMPLATE, RECIPE }
 
     public enum Media { ISO, DISK }

@@ -27,6 +27,15 @@ public final class Machines {
         return get(DESKTOP_ID, VmSpec.DESKTOP);
     }
 
+    /** Drops a machine whose disk has just been deleted, so nothing keeps a handle to what is gone. */
+    public static void forget(String id) {
+        SPECS.remove(id);
+        Machine gone = BY_ID.remove(id);
+        if (gone != null) {
+            gone.close();
+        }
+    }
+
     public static boolean isEmpty() {
         return BY_ID.isEmpty();
     }

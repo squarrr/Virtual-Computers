@@ -26,7 +26,7 @@ public final class MachinePower {
     private MachinePower() {
     }
 
-    static void submit(Runnable work) {
+    public static void submit(Runnable work) {
         WORKER.submit(() -> {
             try {
                 work.run();

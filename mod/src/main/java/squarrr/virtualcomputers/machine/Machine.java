@@ -98,6 +98,12 @@ public final class Machine implements AutoCloseable {
         return managed;
     }
 
+    /** A paused guest still holds its disk open, and "Sleeping" covers both that and a saved snapshot. */
+    public boolean hasLiveProcess() {
+        QemuVm running = vm;
+        return running != null && running.isAlive();
+    }
+
     public ScreenInput input() {
         return source instanceof ScreenInput accepting ? accepting : null;
     }
@@ -263,7 +269,8 @@ public final class Machine implements AutoCloseable {
                 Files.deleteIfExists(disk);
                 VmStore.dropSnapshot(id);
                 Templates.createOverlay(disk, Templates.forEntry(base.id()), entry.diskGb());
-                osId = null;
+                VmStore.setOs(id, entry.id());
+                osId = entry.id();
                 osKnown = true;
             } else {
                 freshDisk(entry);
@@ -284,6 +291,17 @@ public final class Machine implements AutoCloseable {
             }
             setState(MachineState.OFF);
             powerOn();
+        } catch (ImageFetch.MediaMissing waiting) {
+            installing = null;
+            synchronized (this) {
+                swapSource(new StandbySource(MachineState.OFF));
+                setState(MachineState.OFF);
+            }
+            say.fault(entry.name() + " needs an image before it can be installed.");
+            for (String line : String.valueOf(waiting.getMessage()).split("\\R")) {
+                say.detail(line);
+            }
+            VirtualComputers.LOGGER.info("[machine {}] {} is waiting for media", id, entry.id());
         } catch (IOException | RuntimeException e) {
             installing = null;
             fault = e.getMessage();
@@ -304,6 +322,7 @@ public final class Machine implements AutoCloseable {
         Path disk = VmStore.diskFor(id);
         Files.deleteIfExists(disk);
         VmStore.ensureDisk(id, entry, spec.diskGb());
+        VmStore.setOs(id, entry.id());
         osId = entry.id();
         osKnown = true;
         installing = null;
@@ -320,9 +339,11 @@ public final class Machine implements AutoCloseable {
         if (Files.exists(disk)) {
             Files.delete(disk);
         }
+        Files.deleteIfExists(VmStore.mediaOverlayFor(id));
         VmStore.dropSnapshot(id);
         VmStore.ensureDisk(id, null, entry.diskGb());
-        osId = null;
+        VmStore.setOs(id, entry.id());
+        osId = entry.id();
         osKnown = true;
     }
 
@@ -362,6 +383,7 @@ public final class Machine implements AutoCloseable {
                 Path disk = VmStore.diskFor(id);
                 Files.deleteIfExists(disk);
                 Templates.createOverlay(disk, template, entry.diskGb());
+                VmStore.setOs(id, entry.id());
                 osId = entry.id();
                 osKnown = true;
                 installing = null;

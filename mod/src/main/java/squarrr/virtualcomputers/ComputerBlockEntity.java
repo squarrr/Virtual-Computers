@@ -31,6 +31,9 @@ public abstract class ComputerBlockEntity extends BlockEntity {
     public void adoptFrom(ItemStack stack) {
         String carried = stack.get(VcComponents.MACHINE_ID.get());
         machineId = carried != null && !carried.isBlank() ? carried : UUID.randomUUID().toString();
+        if (level != null && level.isClientSide()) {
+            PlacedMachines.add(machineId);
+        }
         setChanged();
         if (level != null && !level.isClientSide()) {
             level.sendBlockUpdated(getBlockPos(), getBlockState(), getBlockState(), 3);
@@ -45,10 +48,29 @@ public abstract class ComputerBlockEntity extends BlockEntity {
     }
 
     @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level != null && level.isClientSide()) {
+            PlacedMachines.add(machineId);
+        }
+    }
+
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (level != null && level.isClientSide()) {
+            PlacedMachines.remove(machineId);
+        }
+    }
+
+    @Override
     protected void loadAdditional(ValueInput input) {
         super.loadAdditional(input);
         String stored = input.getStringOr(KEY, "");
         machineId = stored.isBlank() ? null : stored;
+        if (level != null && level.isClientSide()) {
+            PlacedMachines.add(machineId);
+        }
     }
 
     @Override

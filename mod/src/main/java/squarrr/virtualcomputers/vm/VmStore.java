@@ -1,6 +1,7 @@
 package squarrr.virtualcomputers.vm;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -33,6 +34,106 @@ public final class VmStore {
             }
         }
         return root;
+    }
+
+    /** Every data directory this machine knows of, so other instances' VMs can be accounted for. */
+    public static Path locationIndex() {
+        String override = System.getProperty("vc.locations");
+        return override != null && !override.isBlank()
+                ? Path.of(override)
+                : Path.of(System.getProperty("user.home", "."), ".virtualcomputers", "locations.txt");
+    }
+
+    private static void rememberLocation(Path directory) {
+        Path index = locationIndex();
+        String line = directory.toAbsolutePath().normalize().toString();
+        try {
+            Files.createDirectories(index.getParent());
+            List<String> known = Files.isRegularFile(index)
+                    ? Files.readAllLines(index, StandardCharsets.UTF_8) : List.of();
+            if (known.stream().noneMatch(s -> s.trim().equalsIgnoreCase(line))) {
+                Files.writeString(index, line + System.lineSeparator(), StandardCharsets.UTF_8,
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND);
+            }
+        } catch (IOException e) {
+            LOGGER.debug("[vm] could not record this data directory: {}", e.getMessage());
+        }
+    }
+
+    public enum Sharing { UNSET, ALLOWED, DECLINED }
+
+    private static Path sharingFile() {
+        return root().resolve("cross-instance.txt");
+    }
+
+    /** Whether this instance may keep a list of data folders outside its own, so other instances show up. */
+    public static Sharing sharing() {
+        try {
+            Path file = sharingFile();
+            if (!Files.isRegularFile(file)) {
+                return Sharing.UNSET;
+            }
+            return "yes".equalsIgnoreCase(Files.readString(file, StandardCharsets.UTF_8).trim())
+                    ? Sharing.ALLOWED : Sharing.DECLINED;
+        } catch (IOException | RuntimeException e) {
+            return Sharing.UNSET;
+        }
+    }
+
+    public static void setSharing(boolean allowed) {
+        try {
+            Files.writeString(sharingFile(), allowed ? "yes" : "no", StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            LOGGER.warn("[vm] could not record the cross-instance choice: {}", e.getMessage());
+        }
+        if (allowed) {
+            rememberLocation(root());
+        }
+    }
+
+    public static List<Path> knownLocations() {
+        java.util.LinkedHashSet<Path> found = new java.util.LinkedHashSet<>();
+        found.add(root().toAbsolutePath().normalize());
+        if (sharing() != Sharing.ALLOWED) {
+            return List.copyOf(found);
+        }
+        boolean stale = false;
+        try {
+            Path index = locationIndex();
+            if (Files.isRegularFile(index)) {
+                for (String line : Files.readAllLines(index, StandardCharsets.UTF_8)) {
+                    String trimmed = line.trim();
+                    if (trimmed.isEmpty()) {
+                        continue;
+                    }
+                    Path candidate = Path.of(trimmed).toAbsolutePath().normalize();
+                    if (Files.isDirectory(candidate)) {
+                        found.add(candidate);
+                    } else {
+                        stale = true;
+                    }
+                }
+                if (stale) {
+                    forgetMissingLocations(index, found);
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            LOGGER.debug("[vm] could not read the location index: {}", e.getMessage());
+        }
+        return List.copyOf(found);
+    }
+
+    private static void forgetMissingLocations(Path index, java.util.Collection<Path> alive) {
+        try {
+            StringBuilder rebuilt = new StringBuilder();
+            for (Path path : alive) {
+                rebuilt.append(path).append(System.lineSeparator());
+            }
+            Files.writeString(index, rebuilt.toString(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            LOGGER.debug("[vm] could not prune the location index: {}", e.getMessage());
+        }
     }
 
     public static Path diskFor(String machineId) {
@@ -74,35 +175,70 @@ public final class VmStore {
         ensureDisk(machineId, entry != null ? entry.diskGb() : fallbackGb);
     }
 
+    /** A machine's own copy-on-write layer over shared installer media. */
+    public static Path mediaOverlayFor(String machineId) {
+        return root().resolve("media").resolve(machineId + ".qcow2");
+    }
+
+    public static Path osMarkerFor(Path disk) {
+        return disk.resolveSibling(disk.getFileName() + ".os");
+    }
+
+    /** Records which operating system went onto a disk, because a disk installed onto records nothing. */
+    public static void setOs(String machineId, String entryId) {
+        try {
+            Files.writeString(osMarkerFor(diskFor(machineId)), entryId, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            LOGGER.warn("[vm] could not record the operating system for {}: {}", machineId,
+                    e.getMessage());
+        }
+    }
+
     public static String osOf(String machineId) {
-        Path disk = diskFor(machineId);
+        return osOfDisk(diskFor(machineId));
+    }
+
+    public static String osOfDisk(Path disk) {
+        Path marker = osMarkerFor(disk);
+        if (Files.isRegularFile(marker)) {
+            try {
+                String recorded = Files.readString(marker, StandardCharsets.UTF_8).trim();
+                if (!recorded.isEmpty()) {
+                    return recorded;
+                }
+            } catch (IOException ignored) {
+                // fall through to the backing file
+            }
+        }
+        return templateBehind(disk);
+    }
+
+    public static boolean hasSnapshotOnDisk(Path disk) {
+        return inspect(disk).contains("\"snapshots\"");
+    }
+
+    private static String inspect(Path disk) {
         if (!Files.isRegularFile(disk)) {
-            return null;
+            return "";
         }
         Hypervisor.Diagnosis diagnosis = Hypervisor.diagnose();
         if (diagnosis.qemuImg() == null) {
+            return "";
+        }
+        return Exec.capture(List.of(diagnosis.qemuImg().toString(), "info",
+                "--output", "json", disk.toAbsolutePath().toString()), Exec.QUICK_MS);
+    }
+
+    /** The template a disk is an overlay on, or null when it was installed onto directly. */
+    public static String templateBehind(Path disk) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("\"backing-filename\"\\s*:\\s*\"(.*?)\"").matcher(inspect(disk));
+        if (!matcher.find()) {
             return null;
         }
-        try {
-            Process process = new ProcessBuilder(diagnosis.qemuImg().toString(), "info",
-                    "--output", "json", disk.toAbsolutePath().toString())
-                    .redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes());
-            process.waitFor();
-            java.util.regex.Matcher matcher = java.util.regex.Pattern
-                    .compile("\"backing-filename\"\\s*:\\s*\"(.*?)\"").matcher(output);
-            if (!matcher.find()) {
-                return null;
-            }
-            String backing = matcher.group(1).replace("\\\\", "\\");
-            String name = Path.of(backing).getFileName().toString();
-            return name.endsWith(".qcow2") ? name.substring(0, name.length() - 6) : name;
-        } catch (IOException e) {
-            return null;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return null;
-        }
+        String backing = matcher.group(1).replace("\\\\", "\\");
+        String name = Path.of(backing).getFileName().toString();
+        return name.endsWith(".qcow2") ? name.substring(0, name.length() - 6) : name;
     }
 
     public static void ensureDisk(String machineId, int gigabytes) throws IOException {
@@ -130,22 +266,13 @@ public final class VmStore {
         if (diagnosis.qemuImg() == null) {
             return false;
         }
-        try {
-            Process process = new ProcessBuilder(
-                    diagnosis.qemuImg().toString(), "snapshot", "-l", disk.toString())
-                    .redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes());
-            process.waitFor();
-            for (String line : output.split("\\R")) {
-                String[] fields = line.trim().split("\\s+");
-                if (fields.length >= 2 && SNAPSHOT.equals(fields[1])) {
-                    return true;
-                }
+        String listed = Exec.capture(List.of(diagnosis.qemuImg().toString(), "snapshot", "-l",
+                disk.toString()), Exec.QUICK_MS);
+        for (String line : listed.split("\\R")) {
+            String[] fields = line.trim().split("\\s+");
+            if (fields.length >= 2 && SNAPSHOT.equals(fields[1])) {
+                return true;
             }
-        } catch (IOException e) {
-            LOGGER.warn("[vm] could not list snapshots on {}", disk, e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
         }
         return false;
     }
@@ -228,16 +355,9 @@ public final class VmStore {
     }
 
     private static void run(List<String> command, String what) throws IOException {
-        try {
-            Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-            String output = new String(process.getInputStream().readAllBytes());
-            int status = process.waitFor();
-            if (status != 0) {
-                throw new IOException("qemu-img could not " + what + ": " + output.trim());
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("interrupted while trying to " + what, e);
+        Exec.Result result = Exec.run(command, Exec.PATIENT_MS);
+        if (!result.ok()) {
+            throw new IOException("qemu-img could not " + what + ": " + result.complaint());
         }
     }
 }
